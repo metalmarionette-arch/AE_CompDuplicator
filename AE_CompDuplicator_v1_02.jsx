@@ -384,6 +384,12 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
   for (var i = 0; i < selItems.length; i++){
       duplicateFolderRecursive(selItems[i], selItems[i].parentFolder, dupFootage, renameOptions, mapping);
   }
+  var compNameMap = {};
+  for (var m = 0; m < mapping.length; m++) {
+      if (mapping[m].original instanceof CompItem && mapping[m].duplicate instanceof CompItem) {
+          compNameMap[mapping[m].original.name] = mapping[m].duplicate.name;
+      }
+  }
   for (var i = 0; i < mapping.length; i++){
       if (mapping[i].duplicate instanceof CompItem) {
           var dupComp = mapping[i].duplicate;
@@ -404,6 +410,7 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
       if (mapping[i].duplicate instanceof CompItem) {
           var dupComp = mapping[i].duplicate;
           for (var j = 1; j <= dupComp.numLayers; j++){
+              replaceNestedSources(dupComp.layer(j), compNameMap, renameOptions);
               updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
           }
       }
@@ -626,6 +633,12 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           }
       }
   }
+  var compNameMap = {};
+  for (var m = 0; m < mapping.length; m++) {
+      if (mapping[m].original instanceof CompItem && mapping[m].duplicate instanceof CompItem) {
+          compNameMap[mapping[m].original.name] = mapping[m].duplicate.name;
+      }
+  }
   if (mode === "duplicate") {
       for (var i = 0; i < mapping.length; i++){
           if (mapping[i].duplicate instanceof CompItem) {
@@ -647,6 +660,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           if (mapping[i].duplicate instanceof CompItem) {
               var dupComp = mapping[i].duplicate;
               for (var j = 1; j <= dupComp.numLayers; j++){
+                  replaceNestedSources(dupComp.layer(j), compNameMap, renameOptions);
                   updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
               }
           }
