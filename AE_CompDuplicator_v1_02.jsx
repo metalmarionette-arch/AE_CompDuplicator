@@ -184,52 +184,13 @@ function replaceNestedSources(layer, compNameMap, renameOptions) {
 }
 
 function duplicateItem(item) {
-  var proj = app.project;
-  var beforeItems = [];
-  for (var i = 1; i <= proj.numItems; i++){
-      beforeItems.push(proj.item(i));
-  }
   if (typeof item.duplicate === "function") {
       try {
           return item.duplicate();
-      } catch (e) {}
-  }
-  var origSel = [];
-  for (var i = 1; i <= proj.numItems; i++){
-      if (proj.item(i).selected) {
-          origSel.push(proj.item(i));
-      }
-      proj.item(i).selected = false;
-  }
-  item.selected = true;
-  var dupCmdId = app.findMenuCommandId("複製");
-  if (dupCmdId === 0) {
-      alert("メニューコマンド「複製」が見つかりません。");
-      return null;
-  }
-  app.executeCommand(dupCmdId);
-  var newItem = null;
-  for (var i = 1; i <= proj.numItems; i++){
-      var candidate = proj.item(i);
-      var found = false;
-      for (var j = 0; j < beforeItems.length; j++){
-          if (candidate === beforeItems[j]){
-              found = true;
-              break;
-          }
-      }
-      if (!found) {
-          newItem = candidate;
-          break;
+      } catch (e) {
       }
   }
-  for (var i = 1; i <= proj.numItems; i++){
-      proj.item(i).selected = false;
-  }
-  for (var i = 0; i < origSel.length; i++){
-      origSel[i].selected = true;
-  }
-  return newItem;
+  return null;
 }
 
 function duplicateItemWithRename(item, renameOptions) {
@@ -474,11 +435,15 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       return;
   }
   app.beginUndoGroup("コンポ資産収集");
-  var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
-  if (selectedComps.length > 1) {
-      baseFolderName += " etc.";
+  var useBaseFolder = !(mode === "duplicate" && !duplicateFootage);
+  var baseFolder = null;
+  if (useBaseFolder) {
+      var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
+      if (selectedComps.length > 1) {
+          baseFolderName += " etc.";
+      }
+      baseFolder = proj.items.addFolder(baseFolderName);
   }
-  var baseFolder = proj.items.addFolder(baseFolderName);
   var nestedComps = [];
   var collectedFootages = [];
   function isInArray(item, arr) {
@@ -628,7 +593,9 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       var item = allItems[i];
       var chain = getOriginalFolderChain(item);
       var targetFolder = baseFolder;
-      if (chain.length > 0) {
+      if (!useBaseFolder) {
+          targetFolder = item.parentFolder;
+      } else if (chain.length > 0) {
           targetFolder = getOrCreateFolderChain(baseFolder, chain);
       }
       if (mode === "duplicate") {
@@ -637,7 +604,14 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
               dup = item;
           } else {
               dup = duplicateItemWithRename(item, renameOptions);
-              dup.parentFolder = targetFolder;
+              if (!dup) {
+                  continue;
+              }
+              if (targetFolder) {
+                  dup.parentFolder = targetFolder;
+              } else if (!useBaseFolder) {
+                  dup.parentFolder = item.parentFolder;
+              }
           }
           mapping.push({ original: item, duplicate: dup });
       } else {
