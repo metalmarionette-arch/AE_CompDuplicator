@@ -235,18 +235,20 @@ function duplicateItem(item) {
 function duplicateItemWithRename(item, renameOptions) {
   var dup = duplicateItem(item);
   if (dup) {
-      var newName = item.name;
-      for (var j = 0; j < renameOptions.replace.length; j++) {
-          var rep = renameOptions.replace[j];
-          if (rep.from !== "") {
-            newName = newName.replace(new RegExp(rep.from, 'g'), rep.to);
+      if (!(item instanceof FootageItem)) {
+          var newName = item.name;
+          for (var j = 0; j < renameOptions.replace.length; j++) {
+              var rep = renameOptions.replace[j];
+              if (rep.from !== "") {
+                newName = newName.replace(new RegExp(rep.from, 'g'), rep.to);
+              }
           }
+          newName = renameOptions.add.before + newName + renameOptions.add.after;
+          if (newName === item.name) {
+              newName = item.name + "_copy";
+          }
+          dup.name = newName;
       }
-      newName = renameOptions.add.before + newName + renameOptions.add.after;
-      if (newName === item.name) {
-          newName = item.name + "_copy";
-      }
-      dup.name = newName;
   }
   return dup;
 }
