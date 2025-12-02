@@ -160,6 +160,12 @@ function replaceNestedSources(layer, compNameMap, renameOptions) {
     }
   }
   else if (renameOptions.replaceFootage && (layer.source instanceof FootageItem)) {
+    // When duplicating footage, keep the newly duplicated footage rather than
+    // attempting to replace it with an existing item based on the rename rules.
+    if (renameOptions.duplicateFootage) {
+      return;
+    }
+
     var currentName = layer.source.name;
     var newName = currentName;
 
