@@ -664,6 +664,15 @@ function collectAssets(selectedComps, mode, renameOptions, duplicateFootage, col
       }
   }
 
+  var sourceMap = {};
+  for (var s = 0; s < mapping.length; s++) {
+      var originalItem = mapping[s].original;
+      var duplicateItem = mapping[s].duplicate;
+      if (duplicateItem && originalItem && originalItem.id !== undefined) {
+          sourceMap[originalItem.id] = duplicateItem;
+      }
+  }
+
   var compNameMap = {};
   for (var m = 0; m < mapping.length; m++) {
       if (mapping[m].original instanceof CompItem && mapping[m].duplicate instanceof CompItem) {
@@ -677,12 +686,10 @@ function collectAssets(selectedComps, mode, renameOptions, duplicateFootage, col
               var dupComp = mapping[i].duplicate;
               for (var j = 1; j <= dupComp.numLayers; j++){
                   var layer = dupComp.layer(j);
-                  if (layer.source) {
-                      for (var k = 0; k < mapping.length; k++){
-                          if (layer.source === mapping[k].original){
-                              layer.replaceSource(mapping[k].duplicate, false);
-                              break;
-                          }
+                  if (layer.source && layer.source.id !== undefined) {
+                      var mappedSource = sourceMap[layer.source.id];
+                      if (mappedSource && mappedSource !== layer.source) {
+                          layer.replaceSource(mappedSource, false);
                       }
                   }
               }
