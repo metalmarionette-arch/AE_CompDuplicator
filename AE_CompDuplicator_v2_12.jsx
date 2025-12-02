@@ -67,7 +67,11 @@
 
     // チェックボックス：ラベルを「フッテージも複製/移動する」に変更
     var footageChk = win.add("checkbox", undefined, "フッテージも複製/移動する");
-    footageChk.value = true;
+    footageChk.value = false;
+
+    // フッテージ差し替えのオン/オフ
+    var footageReplaceChk = win.add("checkbox", undefined, "フッテージの差し替え");
+    footageReplaceChk.value = true;
 
     // ───────────────────────────────
     // ■ UI更新処理（グレーアウト制御とモード注釈の更新）
@@ -131,7 +135,8 @@
                 { from: replace1Before.text, to: replace1After.text },
                 { from: replace2Before.text, to: replace2After.text }
             ],
-            add: { before: addBefore.text, after: addAfter.text }
+            add: { before: addBefore.text, after: addAfter.text },
+            replaceFootage: footageReplaceChk.value
         };
 
         if (radioFolder.value) {
@@ -196,6 +201,7 @@
                 for (var j = 1; j <= dupComp.numLayers; j++){
                     updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
                 }
+                replaceFootageInComp(dupComp, renameOptions);
             }
         }
         
@@ -315,6 +321,48 @@
             origSel[i].selected = true;
         }
         return newItem;
+    }
+
+    function buildRenamedName(originalName, renameOptions) {
+        var newName = originalName;
+        for (var j = 0; j < renameOptions.replace.length; j++) {
+            var rep = renameOptions.replace[j];
+            if (rep.from !== "") {
+                newName = newName.replace(new RegExp(rep.from, 'g'), rep.to);
+            }
+        }
+        newName = renameOptions.add.before + newName + renameOptions.add.after;
+        return newName;
+    }
+
+    function findFootageByName(name) {
+        var proj = app.project;
+        for (var i = 1; i <= proj.numItems; i++) {
+            var item = proj.item(i);
+            if (item instanceof FootageItem && item.name === name) {
+                return item;
+            }
+        }
+        return null;
+    }
+
+    function replaceFootageInComp(comp, renameOptions) {
+        if (!renameOptions.replaceFootage) {
+            return;
+        }
+
+        for (var i = 1; i <= comp.numLayers; i++) {
+            var layer = comp.layer(i);
+            if (layer.source && layer.source instanceof FootageItem) {
+                var targetName = buildRenamedName(layer.source.name, renameOptions);
+                if (targetName !== layer.source.name) {
+                    var targetItem = findFootageByName(targetName);
+                    if (targetItem && targetItem.id !== layer.source.id) {
+                        layer.replaceSource(targetItem, false);
+                    }
+                }
+            }
+        }
     }
 
     function updateExpressionsInPropertyGroup(propGroup, mapping) {
@@ -458,12 +506,16 @@
             return;
         }
         app.beginUndoGroup("コンポ資産収集");
-        // 変更: 一番上のフォルダ名に "##" を追加する
-        var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
-        if (selectedComps.length > 1) {
-            baseFolderName += " etc.";
+        var createBaseFolder = !(mode === "duplicate" && !footageChk.value);
+        var baseFolder = null;
+        if (createBaseFolder) {
+            // 変更: 一番上のフォルダ名に "##" を追加する
+            var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
+            if (selectedComps.length > 1) {
+                baseFolderName += " etc.";
+            }
+            baseFolder = proj.items.addFolder(baseFolderName);
         }
-        var baseFolder = proj.items.addFolder(baseFolderName);
         var nestedComps = [];
         var collectedFootages = [];
         function isInArray(item, arr) {
@@ -623,9 +675,12 @@
         for (var i = 0; i < allItems.length; i++){
             var item = allItems[i];
             var chain = getOriginalFolderChain(item);
-            var targetFolder = baseFolder;
-            if (chain.length > 0) {
-                targetFolder = getOrCreateFolderChain(baseFolder, chain);
+            var targetFolder = item.parentFolder;
+            if (createBaseFolder) {
+                targetFolder = baseFolder;
+                if (chain.length > 0) {
+                    targetFolder = getOrCreateFolderChain(baseFolder, chain);
+                }
             }
             if (mode === "duplicate") {
                 var dup;
@@ -676,6 +731,7 @@
                     for (var j = 1; j <= dupComp.numLayers; j++){
                         updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
                     }
+                    replaceFootageInComp(dupComp, renameOptions);
                 }
             }
             
