@@ -476,6 +476,17 @@ function collectAssets(selectedComps, mode, renameOptions, duplicateFootage, col
       useBaseFolder = useBaseFolderOverride;
   }
 
+  var originalSelection = null;
+  if (mode === "duplicate" && duplicateFootage) {
+      originalSelection = [];
+      var currentSel = proj.selection;
+      if (currentSel && currentSel.length) {
+          for (var si = 0; si < currentSel.length; si++) {
+              originalSelection.push(currentSel[si]);
+          }
+      }
+  }
+
   if (useBaseFolder && !baseFolder) {
       var baseFolderName = baseFolderNameOverride;
       if (!baseFolderName) {
@@ -634,6 +645,11 @@ function collectAssets(selectedComps, mode, renameOptions, duplicateFootage, col
       }
 
       if (mode === "duplicate") {
+          if (duplicateFootage) {
+              try {
+                  proj.selection = [item];
+              } catch (e) {}
+          }
           var dup;
           if (item instanceof FootageItem && !duplicateFootage) {
               dup = item;
@@ -662,6 +678,16 @@ function collectAssets(selectedComps, mode, renameOptions, duplicateFootage, col
               mapping.push({ original: item, duplicate: item });
           }
       }
+  }
+
+  if (mode === "duplicate" && duplicateFootage) {
+      try {
+          if (originalSelection) {
+              proj.selection = originalSelection;
+          } else {
+              proj.selection = [];
+          }
+      } catch (e) {}
   }
 
   var sourceMap = {};
