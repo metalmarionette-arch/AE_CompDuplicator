@@ -54,7 +54,7 @@ function buildUI(thisObj) {
   moveCheckbox.value = false;
 
   var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する");
-  duplicateFootageCheckbox.value = true;
+  duplicateFootageCheckbox.value = false;
 
   var groupOne = myPanel.add("group", undefined, "GroupOne");
   groupOne.orientation = "row";
@@ -251,6 +251,49 @@ function duplicateItemWithRename(item, renameOptions) {
   return dup;
 }
 
+function buildRenamedName(name, renameOptions) {
+  var newName = name;
+  for (var j = 0; j < renameOptions.replace.length; j++) {
+      var rep = renameOptions.replace[j];
+      if (rep.from !== "") {
+          var re = new RegExp(escapeRegExp(rep.from), 'g');
+          newName = newName.replace(re, rep.to);
+      }
+  }
+  newName = renameOptions.add.before + newName + renameOptions.add.after;
+  return newName;
+}
+
+function findFootageByName(name) {
+  var proj = app.project;
+  for (var i = 1; i <= proj.numItems; i++) {
+      var item = proj.item(i);
+      if (item instanceof FootageItem && item.name === name) {
+          return item;
+      }
+  }
+  return null;
+}
+
+function replaceFootageInComp(comp, renameOptions) {
+  if (!renameOptions.replaceFootage) {
+      return;
+  }
+
+  for (var i = 1; i <= comp.numLayers; i++) {
+      var layer = comp.layer(i);
+      if (layer.source && layer.source instanceof FootageItem) {
+          var targetName = buildRenamedName(layer.source.name, renameOptions);
+          if (targetName !== layer.source.name) {
+              var targetItem = findFootageByName(targetName);
+              if (targetItem && targetItem.id !== layer.source.id) {
+                  layer.replaceSource(targetItem, false);
+              }
+          }
+      }
+  }
+}
+
 function duplicateFolderRecursive(originalFolder, parentForDuplicate, dupFootage, renameOptions, mapping) {
   var proj = app.project;
   var newFolderName = originalFolder.name;
@@ -445,6 +488,7 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
           for (var j = 1; j <= dupComp.numLayers; j++){
               updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
           }
+          replaceFootageInComp(dupComp, renameOptions);
       }
   }
   updateEssentialProperties(mapping);
@@ -474,11 +518,15 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       return;
   }
   app.beginUndoGroup("コンポ資産収集");
-  var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
-  if (selectedComps.length > 1) {
-      baseFolderName += " etc.";
+  var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
+  var baseFolder = null;
+  if (createBaseFolder) {
+      var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
+      if (selectedComps.length > 1) {
+          baseFolderName += " etc.";
+      }
+      baseFolder = proj.items.addFolder(baseFolderName);
   }
-  var baseFolder = proj.items.addFolder(baseFolderName);
   var nestedComps = [];
   var collectedFootages = [];
   function isInArray(item, arr) {
@@ -627,9 +675,12 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   for (var i = 0; i < allItems.length; i++){
       var item = allItems[i];
       var chain = getOriginalFolderChain(item);
-      var targetFolder = baseFolder;
-      if (chain.length > 0) {
-          targetFolder = getOrCreateFolderChain(baseFolder, chain);
+      var targetFolder = item.parentFolder;
+      if (createBaseFolder) {
+          targetFolder = baseFolder;
+          if (chain.length > 0) {
+              targetFolder = getOrCreateFolderChain(baseFolder, chain);
+          }
       }
       if (mode === "duplicate") {
           var dup;
@@ -675,6 +726,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
               for (var j = 1; j <= dupComp.numLayers; j++){
                   updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
               }
+              replaceFootageInComp(dupComp, renameOptions);
           }
       }
       updateEssentialProperties(mapping);
