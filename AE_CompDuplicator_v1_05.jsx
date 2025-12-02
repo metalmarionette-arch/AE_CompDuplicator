@@ -50,11 +50,29 @@ function buildUI(thisObj) {
   var replaceFootageCheckbox = optionGroup.add("checkbox", undefined, "コンポ内フッテージも差し替え");
   replaceFootageCheckbox.value = true;
 
+  var replaceCompCheckbox = optionGroup.add("checkbox", undefined, "コンポ内コンポも差し替え");
+  replaceCompCheckbox.value = true;
+
   var moveCheckbox = optionGroup.add("checkbox", undefined, "移動（OFFのときは複製）");
   moveCheckbox.value = false;
 
-  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する");
+  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する（収集）");
   duplicateFootageCheckbox.value = false;
+
+  function updateOptionEnabling() {
+    var enabled = !moveCheckbox.value;
+    replace1Before.enabled = enabled;
+    replace1After.enabled = enabled;
+    replace2Before.enabled = enabled;
+    replace2After.enabled = enabled;
+    addBefore.enabled = enabled;
+    addAfter.enabled = enabled;
+    replaceFootageCheckbox.enabled = enabled;
+    replaceCompCheckbox.enabled = enabled;
+  }
+
+  moveCheckbox.onClick = updateOptionEnabling;
+  updateOptionEnabling();
 
   var groupOne = myPanel.add("group", undefined, "GroupOne");
   groupOne.orientation = "row";
@@ -68,6 +86,7 @@ function buildUI(thisObj) {
       ],
       add: { before: addBefore.text, after: addAfter.text },
       replaceFootage: replaceFootageCheckbox.value,
+      replaceComps: replaceCompCheckbox.value,
       move: moveCheckbox.value,
       duplicateFootage: duplicateFootageCheckbox.value
     });
@@ -343,28 +362,30 @@ function duplicateFolderRecursive(originalFolder, parentForDuplicate, dupFootage
   return newFolder;
 }
 
-function updateExpressionsInPropertyGroup(propGroup, mapping) {
+function updateExpressionsInPropertyGroup(propGroup, mapping, renameOptions) {
   if (propGroup.numProperties !== undefined) {
       for (var i = 1; i <= propGroup.numProperties; i++){
           var prop = propGroup.property(i);
           if (prop.canSetExpression && prop.expression !== "") {
               var expr = prop.expression;
-              expr = expr.replace(/comp\(["']([^"']+)["']\)/g, function(match, p1) {
-                  for (var m = 0; m < mapping.length; m++) {
-                      if (mapping[m].original.name === p1) {
-                          return 'comp("' + mapping[m].duplicate.name + '")';
+              if (!renameOptions || renameOptions.replaceComps !== false) {
+                  expr = expr.replace(/comp\(["']([^"']+)["']\)/g, function(match, p1) {
+                      for (var m = 0; m < mapping.length; m++) {
+                          if (mapping[m].original.name === p1) {
+                              return 'comp("' + mapping[m].duplicate.name + '")';
+                          }
                       }
-                  }
-                  return match;
-              });
-              expr = expr.replace(/layer\(["']([^"']+)["']\)/g, function(match, p1) {
-                  for (var m = 0; m < mapping.length; m++) {
-                      if (mapping[m].original.name === p1) {
-                          return 'layer("' + mapping[m].duplicate.name + '")';
+                      return match;
+                  });
+                  expr = expr.replace(/layer\(["']([^"']+)["']\)/g, function(match, p1) {
+                      for (var m = 0; m < mapping.length; m++) {
+                          if (mapping[m].original.name === p1) {
+                              return 'layer("' + mapping[m].duplicate.name + '")';
+                          }
                       }
-                  }
-                  return match;
-              });
+                      return match;
+                  });
+              }
               expr = expr.replace(/footage\(["']([^"']+)["']\)/g, function(match, p1) {
                   for (var m = 0; m < mapping.length; m++){
                       if (mapping[m].original.name === p1) {
@@ -378,7 +399,7 @@ function updateExpressionsInPropertyGroup(propGroup, mapping) {
               }
           }
           if (prop.numProperties !== undefined && prop.numProperties > 0) {
-              updateExpressionsInPropertyGroup(prop, mapping);
+              updateExpressionsInPropertyGroup(prop, mapping, renameOptions);
           }
       }
   }
@@ -468,16 +489,18 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
   for (var i = 0; i < selItems.length; i++){
       duplicateFolderRecursive(selItems[i], selItems[i].parentFolder, dupFootage, renameOptions, mapping);
   }
-  for (var i = 0; i < mapping.length; i++){
-      if (mapping[i].duplicate instanceof CompItem) {
-          var dupComp = mapping[i].duplicate;
-          for (var j = 1; j <= dupComp.numLayers; j++){
-              var layer = dupComp.layer(j);
-              if (layer.source) {
-                  for (var k = 0; k < mapping.length; k++){
-                      if (layer.source === mapping[k].original) {
-                          layer.replaceSource(mapping[k].duplicate, false);
-                          break;
+  if (renameOptions.replaceComps !== false) {
+      for (var i = 0; i < mapping.length; i++){
+          if (mapping[i].duplicate instanceof CompItem) {
+              var dupComp = mapping[i].duplicate;
+              for (var j = 1; j <= dupComp.numLayers; j++){
+                  var layer = dupComp.layer(j);
+                  if (layer.source) {
+                      for (var k = 0; k < mapping.length; k++){
+                          if (layer.source === mapping[k].original) {
+                              layer.replaceSource(mapping[k].duplicate, false);
+                              break;
+                          }
                       }
                   }
               }
@@ -487,12 +510,12 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
   for (var i = 0; i < mapping.length; i++){
       if (mapping[i].duplicate instanceof CompItem) {
           var dupComp = mapping[i].duplicate;
-          for (var j = 1; j <= dupComp.numLayers; j++){
-              updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
+              for (var j = 1; j <= dupComp.numLayers; j++){
+                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping, renameOptions);
+              }
+              replaceFootageInComp(dupComp, renameOptions);
           }
-          replaceFootageInComp(dupComp, renameOptions);
       }
-  }
   updateEssentialProperties(mapping);
   app.endUndoGroup();
   alert("フォルダ複製が完了しました。");
@@ -531,6 +554,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   }
   var nestedComps = [];
   var collectedFootages = [];
+  var allowNestedCollection = selectedComps.length > 1;
   function isInArray(item, arr) {
       for (var i = 0; i < arr.length; i++) {
           if (arr[i] === item) {
@@ -543,7 +567,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       for (var i = 1; i <= compItem.numLayers; i++) {
           var layer = compItem.layer(i);
           if (layer.source) {
-              if (layer.source instanceof CompItem) {
+              if (layer.source instanceof CompItem && allowNestedCollection) {
                   var sourceComp = layer.source;
                   var alreadySelected = false;
                   for (var j = 0; j < selectedComps.length; j++) {
@@ -591,7 +615,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                       var item = proj.item(j);
                       if (item.name === depName) {
                           if (item instanceof CompItem) {
-                              if (!isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
+                              if (allowNestedCollection && !isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
                                   nestedComps.push(item);
                                   collectFromComp(item);
                               }
@@ -721,13 +745,15 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       for (var i = 0; i < mapping.length; i++){
           if (mapping[i].duplicate instanceof CompItem) {
               var dupComp = mapping[i].duplicate;
-              for (var j = 1; j <= dupComp.numLayers; j++){
-                  var layer = dupComp.layer(j);
-                  if (layer.source) {
-                      for (var k = 0; k < mapping.length; k++){
-                          if (layer.source === mapping[k].original){
-                              layer.replaceSource(mapping[k].duplicate, false);
-                              break;
+              if (renameOptions.replaceComps !== false) {
+                  for (var j = 1; j <= dupComp.numLayers; j++){
+                      var layer = dupComp.layer(j);
+                      if (layer.source) {
+                          for (var k = 0; k < mapping.length; k++){
+                              if (layer.source === mapping[k].original){
+                                  layer.replaceSource(mapping[k].duplicate, false);
+                                  break;
+                              }
                           }
                       }
                   }
@@ -738,7 +764,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           if (mapping[i].duplicate instanceof CompItem) {
               var dupComp = mapping[i].duplicate;
               for (var j = 1; j <= dupComp.numLayers; j++){
-                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
+                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping, renameOptions);
               }
               replaceFootageInComp(dupComp, renameOptions);
           }
