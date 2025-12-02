@@ -53,22 +53,8 @@ function buildUI(thisObj) {
   var moveCheckbox = optionGroup.add("checkbox", undefined, "移動（OFFのときは複製）");
   moveCheckbox.value = false;
 
-  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する（収集）");
-  duplicateFootageCheckbox.value = false;
-
-  function updateOptionEnabling() {
-    var enabled = !moveCheckbox.value;
-    replace1Before.enabled = enabled;
-    replace1After.enabled = enabled;
-    replace2Before.enabled = enabled;
-    replace2After.enabled = enabled;
-    addBefore.enabled = enabled;
-    addAfter.enabled = enabled;
-    replaceFootageCheckbox.enabled = enabled;
-  }
-
-  moveCheckbox.onClick = updateOptionEnabling;
-  updateOptionEnabling();
+  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する");
+  duplicateFootageCheckbox.value = true;
 
   var groupOne = myPanel.add("group", undefined, "GroupOne");
   groupOne.orientation = "row";
@@ -249,65 +235,20 @@ function duplicateItem(item) {
 function duplicateItemWithRename(item, renameOptions) {
   var dup = duplicateItem(item);
   if (dup) {
-      if (!(item instanceof FootageItem)) {
-          var newName = item.name;
-          for (var j = 0; j < renameOptions.replace.length; j++) {
-              var rep = renameOptions.replace[j];
-              if (rep.from !== "") {
-                newName = newName.replace(new RegExp(rep.from, 'g'), rep.to);
-              }
+      var newName = item.name;
+      for (var j = 0; j < renameOptions.replace.length; j++) {
+          var rep = renameOptions.replace[j];
+          if (rep.from !== "") {
+            newName = newName.replace(new RegExp(rep.from, 'g'), rep.to);
           }
-          newName = renameOptions.add.before + newName + renameOptions.add.after;
-          if (newName === item.name) {
-              newName = item.name + "_copy";
-          }
-          dup.name = newName;
       }
+      newName = renameOptions.add.before + newName + renameOptions.add.after;
+      if (newName === item.name) {
+          newName = item.name + "_copy";
+      }
+      dup.name = newName;
   }
   return dup;
-}
-
-function buildRenamedName(name, renameOptions) {
-  var newName = name;
-  for (var j = 0; j < renameOptions.replace.length; j++) {
-      var rep = renameOptions.replace[j];
-      if (rep.from !== "") {
-          var re = new RegExp(escapeRegExp(rep.from), 'g');
-          newName = newName.replace(re, rep.to);
-      }
-  }
-  newName = renameOptions.add.before + newName + renameOptions.add.after;
-  return newName;
-}
-
-function findFootageByName(name) {
-  var proj = app.project;
-  for (var i = 1; i <= proj.numItems; i++) {
-      var item = proj.item(i);
-      if (item instanceof FootageItem && item.name === name) {
-          return item;
-      }
-  }
-  return null;
-}
-
-function replaceFootageInComp(comp, renameOptions) {
-  if (!renameOptions.replaceFootage) {
-      return;
-  }
-
-  for (var i = 1; i <= comp.numLayers; i++) {
-      var layer = comp.layer(i);
-      if (layer.source && layer.source instanceof FootageItem) {
-          var targetName = buildRenamedName(layer.source.name, renameOptions);
-          if (targetName !== layer.source.name) {
-              var targetItem = findFootageByName(targetName);
-              if (targetItem && targetItem.id !== layer.source.id) {
-                  layer.replaceSource(targetItem, false);
-              }
-          }
-      }
-  }
 }
 
 function duplicateFolderRecursive(originalFolder, parentForDuplicate, dupFootage, renameOptions, mapping) {
@@ -357,7 +298,7 @@ function duplicateFolderRecursive(originalFolder, parentForDuplicate, dupFootage
   return newFolder;
 }
 
-function updateExpressionsInPropertyGroup(propGroup, mapping, renameOptions) {
+function updateExpressionsInPropertyGroup(propGroup, mapping) {
   if (propGroup.numProperties !== undefined) {
       for (var i = 1; i <= propGroup.numProperties; i++){
           var prop = propGroup.property(i);
@@ -392,7 +333,7 @@ function updateExpressionsInPropertyGroup(propGroup, mapping, renameOptions) {
               }
           }
           if (prop.numProperties !== undefined && prop.numProperties > 0) {
-              updateExpressionsInPropertyGroup(prop, mapping, renameOptions);
+              updateExpressionsInPropertyGroup(prop, mapping);
           }
       }
   }
@@ -501,12 +442,11 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
   for (var i = 0; i < mapping.length; i++){
       if (mapping[i].duplicate instanceof CompItem) {
           var dupComp = mapping[i].duplicate;
-              for (var j = 1; j <= dupComp.numLayers; j++){
-                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping, renameOptions);
-              }
-              replaceFootageInComp(dupComp, renameOptions);
+          for (var j = 1; j <= dupComp.numLayers; j++){
+              updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
           }
       }
+  }
   updateEssentialProperties(mapping);
   app.endUndoGroup();
   alert("フォルダ複製が完了しました。");
@@ -534,18 +474,13 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       return;
   }
   app.beginUndoGroup("コンポ資産収集");
-  var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
-  var baseFolder = null;
-  if (createBaseFolder) {
-      var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
-      if (selectedComps.length > 1) {
-          baseFolderName += " etc.";
-      }
-      baseFolder = proj.items.addFolder(baseFolderName);
+  var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
+  if (selectedComps.length > 1) {
+      baseFolderName += " etc.";
   }
+  var baseFolder = proj.items.addFolder(baseFolderName);
   var nestedComps = [];
   var collectedFootages = [];
-  var allowNestedCollection = selectedComps.length > 1;
   function isInArray(item, arr) {
       for (var i = 0; i < arr.length; i++) {
           if (arr[i] === item) {
@@ -558,7 +493,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       for (var i = 1; i <= compItem.numLayers; i++) {
           var layer = compItem.layer(i);
           if (layer.source) {
-              if (layer.source instanceof CompItem && allowNestedCollection) {
+              if (layer.source instanceof CompItem) {
                   var sourceComp = layer.source;
                   var alreadySelected = false;
                   for (var j = 0; j < selectedComps.length; j++) {
@@ -606,7 +541,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                       var item = proj.item(j);
                       if (item.name === depName) {
                           if (item instanceof CompItem) {
-                              if (allowNestedCollection && !isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
+                              if (!isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
                                   nestedComps.push(item);
                                   collectFromComp(item);
                               }
@@ -691,41 +626,26 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   var mapping = [];
   for (var i = 0; i < allItems.length; i++){
       var item = allItems[i];
-      var effectiveSource = item;
-
-      if (item instanceof FootageItem && renameOptions.replaceFootage) {
-          var replacementName = buildRenamedName(item.name, renameOptions);
-          if (replacementName !== item.name) {
-              var replacement = findTargetItem(replacementName);
-              if (replacement && replacement instanceof FootageItem) {
-                  effectiveSource = replacement;
-              }
-          }
-      }
-
-      var chain = getOriginalFolderChain(effectiveSource);
-      var targetFolder = item.parentFolder;
-      if (createBaseFolder) {
-          targetFolder = baseFolder;
-          if (chain.length > 0) {
-              targetFolder = getOrCreateFolderChain(baseFolder, chain);
-          }
+      var chain = getOriginalFolderChain(item);
+      var targetFolder = baseFolder;
+      if (chain.length > 0) {
+          targetFolder = getOrCreateFolderChain(baseFolder, chain);
       }
       if (mode === "duplicate") {
           var dup;
           if (item instanceof FootageItem && !duplicateFootage) {
-              dup = effectiveSource;
+              dup = item;
           } else {
-              dup = duplicateItemWithRename(effectiveSource, renameOptions);
+              dup = duplicateItemWithRename(item, renameOptions);
               dup.parentFolder = targetFolder;
           }
           mapping.push({ original: item, duplicate: dup });
       } else {
           if (item instanceof FootageItem) {
               if (duplicateFootage) {
-                  effectiveSource.parentFolder = targetFolder;
+                  item.parentFolder = targetFolder;
               }
-              mapping.push({ original: item, duplicate: effectiveSource });
+              mapping.push({ original: item, duplicate: item });
           } else {
               item.parentFolder = targetFolder;
               mapping.push({ original: item, duplicate: item });
@@ -753,9 +673,8 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           if (mapping[i].duplicate instanceof CompItem) {
               var dupComp = mapping[i].duplicate;
               for (var j = 1; j <= dupComp.numLayers; j++){
-                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping, renameOptions);
+                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
               }
-              replaceFootageInComp(dupComp, renameOptions);
           }
       }
       updateEssentialProperties(mapping);
