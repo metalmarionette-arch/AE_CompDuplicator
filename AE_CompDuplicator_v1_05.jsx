@@ -53,8 +53,22 @@ function buildUI(thisObj) {
   var moveCheckbox = optionGroup.add("checkbox", undefined, "移動（OFFのときは複製）");
   moveCheckbox.value = false;
 
-  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する");
+  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する（収集）");
   duplicateFootageCheckbox.value = false;
+
+  function updateOptionEnabling() {
+    var enabled = !moveCheckbox.value;
+    replace1Before.enabled = enabled;
+    replace1After.enabled = enabled;
+    replace2Before.enabled = enabled;
+    replace2After.enabled = enabled;
+    addBefore.enabled = enabled;
+    addAfter.enabled = enabled;
+    replaceFootageCheckbox.enabled = enabled;
+  }
+
+  moveCheckbox.onClick = updateOptionEnabling;
+  updateOptionEnabling();
 
   var groupOne = myPanel.add("group", undefined, "GroupOne");
   groupOne.orientation = "row";
