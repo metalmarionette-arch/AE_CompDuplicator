@@ -54,7 +54,7 @@ function buildUI(thisObj) {
   moveCheckbox.value = false;
 
   var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する");
-  duplicateFootageCheckbox.value = true;
+  duplicateFootageCheckbox.value = false;
 
   var groupOne = myPanel.add("group", undefined, "GroupOne");
   groupOne.orientation = "row";
@@ -210,6 +210,32 @@ function duplicateItemWithRename(item, renameOptions) {
       dup.name = newName;
   }
   return dup;
+}
+
+function generateRenamedName(originalName, renameOptions) {
+  var newName = originalName;
+  for (var j = 0; j < renameOptions.replace.length; j++) {
+      var rep = renameOptions.replace[j];
+      if (rep.from !== "") {
+        newName = newName.replace(new RegExp(rep.from, 'g'), rep.to);
+      }
+  }
+  newName = renameOptions.add.before + newName + renameOptions.add.after;
+  if (newName === originalName) {
+      newName = originalName + "_copy";
+  }
+  return newName;
+}
+
+function isDescendantOfFolder(item, folder) {
+  var current = item.parentFolder;
+  while (current) {
+      if (current === folder) {
+          return true;
+      }
+      current = current.parentFolder;
+  }
+  return false;
 }
 
 function duplicateFolderRecursive(originalFolder, parentForDuplicate, dupFootage, renameOptions, mapping) {
@@ -420,39 +446,47 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
   alert("フォルダ複製が完了しました。");
 }
 
-function collectCompAssets(mode, renameOptions, duplicateFootage) {
+function collectAssets(selectedComps, mode, renameOptions, duplicateFootage, collectionOptions) {
   var proj = app.project;
   if (!proj) {
       alert("プロジェクトが開かれていません。");
-      return;
+      return { selectedCount: 0, nestedCount: 0, footageCount: 0 };
   }
-  var selItems = proj.selection;
-  if (selItems.length === 0) {
-      alert("コンポを選択してください。");
-      return;
+
+  var undoLabel = (collectionOptions && collectionOptions.undoLabel) ? collectionOptions.undoLabel : "コンポ資産収集";
+  var suppressAlert = collectionOptions && collectionOptions.suppressAlert;
+  var skipUndoGroup = collectionOptions && collectionOptions.skipUndoGroup;
+  var baseFolder = collectionOptions && collectionOptions.baseFolder ? collectionOptions.baseFolder : null;
+  var useBaseFolderOverride = collectionOptions && collectionOptions.useBaseFolder !== undefined ? collectionOptions.useBaseFolder : null;
+  var baseFolderNameOverride = collectionOptions && collectionOptions.baseFolderName ? collectionOptions.baseFolderName : null;
+  var baseFolderParent = collectionOptions && collectionOptions.parentFolder ? collectionOptions.parentFolder : null;
+
+  if (!skipUndoGroup) {
+      app.beginUndoGroup(undoLabel);
   }
-  var selectedComps = [];
-  for (var i = 0; i < selItems.length; i++) {
-      if (selItems[i] instanceof CompItem) {
-          selectedComps.push(selItems[i]);
-      }
+
+  var useBaseFolder = baseFolder ? true : !(mode === "duplicate" && !duplicateFootage);
+  if (useBaseFolderOverride !== null) {
+      useBaseFolder = useBaseFolderOverride;
   }
-  if (selectedComps.length === 0) {
-      alert("コンポを選択してください。");
-      return;
-  }
-  app.beginUndoGroup("コンポ資産収集");
-  var useBaseFolder = !(mode === "duplicate" && !duplicateFootage);
-  var baseFolder = null;
-  if (useBaseFolder) {
-      var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
-      if (selectedComps.length > 1) {
-          baseFolderName += " etc.";
+
+  if (useBaseFolder && !baseFolder) {
+      var baseFolderName = baseFolderNameOverride;
+      if (!baseFolderName) {
+          baseFolderName = "##Collected Comps - " + selectedComps[0].name;
+          if (selectedComps.length > 1) {
+              baseFolderName += " etc.";
+          }
       }
       baseFolder = proj.items.addFolder(baseFolderName);
+      if (baseFolderParent) {
+          baseFolder.parentFolder = baseFolderParent;
+      }
   }
+
   var nestedComps = [];
   var collectedFootages = [];
+
   function isInArray(item, arr) {
       for (var i = 0; i < arr.length; i++) {
           if (arr[i] === item) {
@@ -461,6 +495,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       }
       return false;
   }
+
   function collectFromComp(compItem) {
       for (var i = 1; i <= compItem.numLayers; i++) {
           var layer = compItem.layer(i);
@@ -486,9 +521,11 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           }
       }
   }
+
   for (var i = 0; i < selectedComps.length; i++) {
       collectFromComp(selectedComps[i]);
   }
+
   function scanExpressionForDependencies(expressionText) {
       var deps = [];
       var compRegex = /comp\(["']([^"']+)["']\)/g;
@@ -502,6 +539,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       }
       return deps;
   }
+
   function scanPropertyGroupForExpressions(prop) {
       if (prop.canSetExpression && prop.expressionEnabled) {
           var expr = prop.expression;
@@ -534,35 +572,16 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           }
       }
   }
-  var scannedCompsForExpressions = [];
-  function scanCompForExpressionDependencies(comp) {
-      scannedCompsForExpressions.push(comp);
-      for (var i = 1; i <= comp.numLayers; i++) {
-          scanPropertyGroupForExpressions(comp.layer(i));
+
+  for (var i = 0; i < selectedComps.length; i++) {
+      var compItem = selectedComps[i];
+      for (var l = 1; l <= compItem.numLayers; l++) {
+          scanPropertyGroupForExpressions(compItem.layer(l));
       }
   }
-  for (var i = 0; i < selectedComps.length; i++) {
-      scanCompForExpressionDependencies(selectedComps[i]);
-  }
-  var previousLength = 0;
-  while (previousLength !== nestedComps.length) {
-      previousLength = nestedComps.length;
-      for (var i = 0; i < nestedComps.length; i++) {
-          if (!isInArray(nestedComps[i], scannedCompsForExpressions)) {
-              scanCompForExpressionDependencies(nestedComps[i]);
-          }
-      }
-  }
-  var allItems = [];
-  for (var i = 0; i < selectedComps.length; i++) {
-      allItems.push(selectedComps[i]);
-  }
-  for (var i = 0; i < nestedComps.length; i++) {
-      allItems.push(nestedComps[i]);
-  }
-  for (var i = 0; i < collectedFootages.length; i++) {
-      allItems.push(collectedFootages[i]);
-  }
+
+  var allItems = selectedComps.concat(nestedComps).concat(collectedFootages);
+
   function getOriginalFolderChain(item) {
       var chain = [];
       var folder = item.parentFolder;
@@ -575,6 +594,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       }
       return chain;
   }
+
   function getOrCreateFolderChain(base, chainArray) {
       var currentFolder = base;
       for (var i = 0; i < chainArray.length; i++) {
@@ -595,6 +615,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       }
       return currentFolder;
   }
+
   var mapping = [];
   for (var i = 0; i < allItems.length; i++){
       var item = allItems[i];
@@ -602,9 +623,10 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       var targetFolder = baseFolder;
       if (!useBaseFolder) {
           targetFolder = item.parentFolder;
-      } else if (chain.length > 0) {
+      } else if (chain.length > 0 && baseFolder) {
           targetFolder = getOrCreateFolderChain(baseFolder, chain);
       }
+
       if (mode === "duplicate") {
           var dup;
           if (item instanceof FootageItem && !duplicateFootage) {
@@ -623,22 +645,26 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
           mapping.push({ original: item, duplicate: dup });
       } else {
           if (item instanceof FootageItem) {
-              if (duplicateFootage) {
+              if (duplicateFootage && targetFolder) {
                   item.parentFolder = targetFolder;
               }
               mapping.push({ original: item, duplicate: item });
           } else {
-              item.parentFolder = targetFolder;
+              if (targetFolder) {
+                  item.parentFolder = targetFolder;
+              }
               mapping.push({ original: item, duplicate: item });
           }
       }
   }
+
   var compNameMap = {};
   for (var m = 0; m < mapping.length; m++) {
       if (mapping[m].original instanceof CompItem && mapping[m].duplicate instanceof CompItem) {
           compNameMap[mapping[m].original.name] = mapping[m].duplicate.name;
       }
   }
+
   if (mode === "duplicate") {
       for (var i = 0; i < mapping.length; i++){
           if (mapping[i].duplicate instanceof CompItem) {
@@ -667,10 +693,110 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       }
       updateEssentialProperties(mapping);
   }
+
+  if (!skipUndoGroup) {
+      app.endUndoGroup();
+  }
+
+  if (!suppressAlert) {
+      alert("コンポ資産収集が完了しました。\n選択コンポ: " + selectedComps.length +
+            " 個\nネストコンポ: " + nestedComps.length +
+            " 個\nフッテージ: " + collectedFootages.length + " 個");
+  }
+
+  return { selectedCount: selectedComps.length, nestedCount: nestedComps.length, footageCount: collectedFootages.length };
+}
+
+function collectCompAssets(mode, renameOptions, duplicateFootage) {
+  var proj = app.project;
+  if (!proj) {
+      alert("プロジェクトが開かれていません。");
+      return;
+  }
+  var selItems = proj.selection;
+  if (selItems.length === 0) {
+      alert("コンポを選択してください。");
+      return;
+  }
+  var selectedComps = [];
+  for (var i = 0; i < selItems.length; i++) {
+      if (selItems[i] instanceof CompItem) {
+          selectedComps.push(selItems[i]);
+      }
+  }
+  if (selectedComps.length === 0) {
+      alert("コンポを選択してください。");
+      return;
+  }
+  collectAssets(selectedComps, mode, renameOptions, duplicateFootage, { undoLabel: "コンポ資産収集" });
+}
+
+function collectFolderAssets(mode, renameOptions) {
+  var proj = app.project;
+  if (!proj) {
+      alert("プロジェクトが開かれていません。");
+      return;
+  }
+  var selItems = proj.selection;
+  if (selItems.length === 0) {
+      alert("複製するフォルダを選択してください。");
+      return;
+  }
+  for (var i = 0; i < selItems.length; i++){
+      if (!(selItems[i] instanceof FolderItem)) {
+          alert("選択項目はフォルダのみ選択してください。");
+          return;
+      }
+  }
+
+  app.beginUndoGroup("フォルダ内コンポ資産収集");
+  var totalSelected = 0;
+  var totalNested = 0;
+  var totalFootage = 0;
+  var processed = false;
+
+  for (var f = 0; f < selItems.length; f++) {
+      var folder = selItems[f];
+      var compsInFolder = [];
+      for (var i = 1; i <= proj.numItems; i++) {
+          var item = proj.item(i);
+          if (item instanceof CompItem && isDescendantOfFolder(item, folder)) {
+              compsInFolder.push(item);
+          }
+      }
+
+      if (compsInFolder.length === 0) {
+          continue;
+      }
+
+      var newFolderName = generateRenamedName(folder.name, renameOptions);
+      var baseFolder = proj.items.addFolder(newFolderName);
+      baseFolder.parentFolder = folder.parentFolder;
+
+      var result = collectAssets(compsInFolder, mode, renameOptions, true, {
+          baseFolder: baseFolder,
+          parentFolder: folder.parentFolder,
+          useBaseFolder: true,
+          suppressAlert: true,
+          skipUndoGroup: true,
+          undoLabel: "フォルダ内コンポ資産収集"
+      });
+
+      totalSelected += result.selectedCount;
+      totalNested += result.nestedCount;
+      totalFootage += result.footageCount;
+      processed = true;
+  }
+
   app.endUndoGroup();
-  alert("コンポ資産収集が完了しました。\n選択コンポ: " + selectedComps.length +
-        " 個\nネストコンポ: " + nestedComps.length +
-        " 個\nフッテージ: " + collectedFootages.length + " 個");
+
+  if (!processed) {
+      alert("選択フォルダ内にコンポジションが見つかりませんでした。");
+  } else {
+      alert("フォルダ内コンポ資産収集が完了しました。\n選択コンポ: " + totalSelected +
+            " 個\nネストコンポ: " + totalNested +
+            " 個\nフッテージ: " + totalFootage + " 個");
+  }
 }
 
 function main_sugi(options) {
@@ -684,7 +810,11 @@ function main_sugi(options) {
   var mode = options.move ? "move" : "duplicate";
 
   if (hasFolder) {
-    duplicateFolderStructureAndUpdateExpressions(options.duplicateFootage, options);
+    if (options.duplicateFootage) {
+      collectFolderAssets(mode, options);
+    } else {
+      duplicateFolderStructureAndUpdateExpressions(options.duplicateFootage, options);
+    }
   } else {
     collectCompAssets(mode, options, options.duplicateFootage);
   }
