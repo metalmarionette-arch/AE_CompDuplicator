@@ -676,7 +676,19 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   var mapping = [];
   for (var i = 0; i < allItems.length; i++){
       var item = allItems[i];
-      var chain = getOriginalFolderChain(item);
+      var effectiveSource = item;
+
+      if (item instanceof FootageItem && renameOptions.replaceFootage) {
+          var replacementName = buildRenamedName(item.name, renameOptions);
+          if (replacementName !== item.name) {
+              var replacement = findTargetItem(replacementName);
+              if (replacement && replacement instanceof FootageItem) {
+                  effectiveSource = replacement;
+              }
+          }
+      }
+
+      var chain = getOriginalFolderChain(effectiveSource);
       var targetFolder = item.parentFolder;
       if (createBaseFolder) {
           targetFolder = baseFolder;
@@ -687,18 +699,18 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       if (mode === "duplicate") {
           var dup;
           if (item instanceof FootageItem && !duplicateFootage) {
-              dup = item;
+              dup = effectiveSource;
           } else {
-              dup = duplicateItemWithRename(item, renameOptions);
+              dup = duplicateItemWithRename(effectiveSource, renameOptions);
               dup.parentFolder = targetFolder;
           }
           mapping.push({ original: item, duplicate: dup });
       } else {
           if (item instanceof FootageItem) {
               if (duplicateFootage) {
-                  item.parentFolder = targetFolder;
+                  effectiveSource.parentFolder = targetFolder;
               }
-              mapping.push({ original: item, duplicate: item });
+              mapping.push({ original: item, duplicate: effectiveSource });
           } else {
               item.parentFolder = targetFolder;
               mapping.push({ original: item, duplicate: item });
