@@ -537,7 +537,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
       alert("コンポを選択してください。");
       return;
   }
-  var allowNestedCollection = collectDependencies && selectedComps.length > 1;
+  var allowNestedCollection = collectDependencies;
   app.beginUndoGroup("コンポ資産収集");
   var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
   var baseFolder = null;
@@ -575,7 +575,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
                       nestedComps.push(sourceComp);
                       collectFromComp(sourceComp);
                   }
-              } else if (!(layer.source instanceof CompItem) && duplicateFootage) {
+              } else if (!(layer.source instanceof CompItem) && (duplicateFootage || collectDependencies)) {
                   if (!isInArray(layer.source, collectedFootages)) {
                       collectedFootages.push(layer.source);
                   }
@@ -615,7 +615,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
                                       nestedComps.push(item);
                                       collectFromComp(item);
                                   }
-                              } else if (duplicateFootage && item instanceof FootageItem) {
+                              } else if ((duplicateFootage || collectDependencies) && item instanceof FootageItem) {
                                   if (!isInArray(item, collectedFootages)) {
                                       collectedFootages.push(item);
                                   }
@@ -659,7 +659,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
   for (var i = 0; i < nestedComps.length; i++) {
       allItems.push(nestedComps[i]);
   }
-  if (duplicateFootage) {
+  if (duplicateFootage || collectDependencies) {
       for (var i = 0; i < collectedFootages.length; i++) {
           allItems.push(collectedFootages[i]);
       }
