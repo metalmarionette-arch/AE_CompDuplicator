@@ -589,7 +589,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                       nestedComps.push(sourceComp);
                       collectFromComp(sourceComp);
                   }
-              } else {
+              } else if (duplicateFootage) {
                   if (!isInArray(layer.source, collectedFootages)) {
                       collectedFootages.push(layer.source);
                   }
@@ -628,7 +628,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                                   nestedComps.push(item);
                                   collectFromComp(item);
                               }
-                          } else if (item instanceof FootageItem) {
+                          } else if (duplicateFootage && item instanceof FootageItem) {
                               if (!isInArray(item, collectedFootages)) {
                                   collectedFootages.push(item);
                               }
@@ -671,8 +671,10 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   for (var i = 0; i < nestedComps.length; i++) {
       allItems.push(nestedComps[i]);
   }
-  for (var i = 0; i < collectedFootages.length; i++) {
-      allItems.push(collectedFootages[i]);
+  if (duplicateFootage) {
+      for (var i = 0; i < collectedFootages.length; i++) {
+          allItems.push(collectedFootages[i]);
+      }
   }
   function getOriginalFolderChain(item) {
       var chain = [];
