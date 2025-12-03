@@ -53,8 +53,25 @@ function buildUI(thisObj) {
   var moveCheckbox = optionGroup.add("checkbox", undefined, "移動（OFFのときは複製）");
   moveCheckbox.value = false;
 
-  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する");
+  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する（収集）");
   duplicateFootageCheckbox.value = false;
+
+  var collectDependenciesCheckbox = optionGroup.add("checkbox", undefined, "依存関係にある全てを複製/移動する（収集）");
+  collectDependenciesCheckbox.value = false;
+
+  function updateOptionEnabling() {
+    var enabled = !moveCheckbox.value;
+    replace1Before.enabled = enabled;
+    replace1After.enabled = enabled;
+    replace2Before.enabled = enabled;
+    replace2After.enabled = enabled;
+    addBefore.enabled = enabled;
+    addAfter.enabled = enabled;
+    replaceFootageCheckbox.enabled = enabled;
+  }
+
+  moveCheckbox.onClick = updateOptionEnabling;
+  updateOptionEnabling();
 
   var groupOne = myPanel.add("group", undefined, "GroupOne");
   groupOne.orientation = "row";
@@ -69,7 +86,8 @@ function buildUI(thisObj) {
       add: { before: addBefore.text, after: addAfter.text },
       replaceFootage: replaceFootageCheckbox.value,
       move: moveCheckbox.value,
-      duplicateFootage: duplicateFootageCheckbox.value
+      duplicateFootage: duplicateFootageCheckbox.value,
+      collectDependencies: collectDependenciesCheckbox.value
     });
   };
 
@@ -498,7 +516,7 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
   alert("フォルダ複製が完了しました。");
 }
 
-function collectCompAssets(mode, renameOptions, duplicateFootage) {
+function collectCompAssets(mode, renameOptions, duplicateFootage, collectDependencies) {
   var proj = app.project;
   if (!proj) {
       alert("プロジェクトが開かれていません。");
@@ -519,6 +537,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       alert("コンポを選択してください。");
       return;
   }
+  var allowNestedCollection = collectDependencies && selectedComps.length > 1;
   app.beginUndoGroup("コンポ資産収集");
   var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
   var baseFolder = null;
@@ -543,7 +562,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       for (var i = 1; i <= compItem.numLayers; i++) {
           var layer = compItem.layer(i);
           if (layer.source) {
-              if (layer.source instanceof CompItem) {
+              if (layer.source instanceof CompItem && allowNestedCollection) {
                   var sourceComp = layer.source;
                   var alreadySelected = false;
                   for (var j = 0; j < selectedComps.length; j++) {
@@ -556,7 +575,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                       nestedComps.push(sourceComp);
                       collectFromComp(sourceComp);
                   }
-              } else {
+              } else if (!(layer.source instanceof CompItem) && duplicateFootage) {
                   if (!isInArray(layer.source, collectedFootages)) {
                       collectedFootages.push(layer.source);
                   }
@@ -567,67 +586,69 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   for (var i = 0; i < selectedComps.length; i++) {
       collectFromComp(selectedComps[i]);
   }
-  function scanExpressionForDependencies(expressionText) {
-      var deps = [];
-      var compRegex = /comp\(["']([^"']+)["']\)/g;
-      var footageRegex = /footage\(["']([^"']+)["']\)/g;
-      var match;
-      while (match = compRegex.exec(expressionText)) {
-          deps.push(match[1]);
+  if (collectDependencies) {
+      function scanExpressionForDependencies(expressionText) {
+          var deps = [];
+          var compRegex = /comp\(["']([^"']+)["']\)/g;
+          var footageRegex = /footage\(["']([^"']+)["']\)/g;
+          var match;
+          while (match = compRegex.exec(expressionText)) {
+              deps.push(match[1]);
+          }
+          while (match = footageRegex.exec(expressionText)) {
+              deps.push(match[1]);
+          }
+          return deps;
       }
-      while (match = footageRegex.exec(expressionText)) {
-          deps.push(match[1]);
-      }
-      return deps;
-  }
-  function scanPropertyGroupForExpressions(prop) {
-      if (prop.canSetExpression && prop.expressionEnabled) {
-          var expr = prop.expression;
-          if (expr && expr.length > 0) {
-              var depNames = scanExpressionForDependencies(expr);
-              for (var i = 0; i < depNames.length; i++) {
-                  var depName = depNames[i];
-                  for (var j = 1; j <= proj.numItems; j++) {
-                      var item = proj.item(j);
-                      if (item.name === depName) {
-                          if (item instanceof CompItem) {
-                              if (!isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
-                                  nestedComps.push(item);
-                                  collectFromComp(item);
+      function scanPropertyGroupForExpressions(prop) {
+          if (prop.canSetExpression && prop.expressionEnabled) {
+              var expr = prop.expression;
+              if (expr && expr.length > 0) {
+                  var depNames = scanExpressionForDependencies(expr);
+                  for (var i = 0; i < depNames.length; i++) {
+                      var depName = depNames[i];
+                      for (var j = 1; j <= proj.numItems; j++) {
+                          var item = proj.item(j);
+                          if (item.name === depName) {
+                              if (item instanceof CompItem) {
+                                  if (allowNestedCollection && !isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
+                                      nestedComps.push(item);
+                                      collectFromComp(item);
+                                  }
+                              } else if (duplicateFootage && item instanceof FootageItem) {
+                                  if (!isInArray(item, collectedFootages)) {
+                                      collectedFootages.push(item);
+                                  }
                               }
-                          } else if (item instanceof FootageItem) {
-                              if (!isInArray(item, collectedFootages)) {
-                                  collectedFootages.push(item);
-                              }
+                              break;
                           }
-                          break;
                       }
                   }
               }
           }
-      }
-      if (prop.numProperties !== undefined) {
-          for (var i = 1; i <= prop.numProperties; i++) {
-              scanPropertyGroupForExpressions(prop.property(i));
+          if (prop.numProperties !== undefined) {
+              for (var i = 1; i <= prop.numProperties; i++) {
+                  scanPropertyGroupForExpressions(prop.property(i));
+              }
           }
       }
-  }
-  var scannedCompsForExpressions = [];
-  function scanCompForExpressionDependencies(comp) {
-      scannedCompsForExpressions.push(comp);
-      for (var i = 1; i <= comp.numLayers; i++) {
-          scanPropertyGroupForExpressions(comp.layer(i));
+      var scannedCompsForExpressions = [];
+      function scanCompForExpressionDependencies(comp) {
+          scannedCompsForExpressions.push(comp);
+          for (var i = 1; i <= comp.numLayers; i++) {
+              scanPropertyGroupForExpressions(comp.layer(i));
+          }
       }
-  }
-  for (var i = 0; i < selectedComps.length; i++) {
-      scanCompForExpressionDependencies(selectedComps[i]);
-  }
-  var previousLength = 0;
-  while (previousLength !== nestedComps.length) {
-      previousLength = nestedComps.length;
-      for (var i = 0; i < nestedComps.length; i++) {
-          if (!isInArray(nestedComps[i], scannedCompsForExpressions)) {
-              scanCompForExpressionDependencies(nestedComps[i]);
+      for (var i = 0; i < selectedComps.length; i++) {
+          scanCompForExpressionDependencies(selectedComps[i]);
+      }
+      var previousLength = 0;
+      while (previousLength !== nestedComps.length) {
+          previousLength = nestedComps.length;
+          for (var i = 0; i < nestedComps.length; i++) {
+              if (!isInArray(nestedComps[i], scannedCompsForExpressions)) {
+                  scanCompForExpressionDependencies(nestedComps[i]);
+              }
           }
       }
   }
@@ -638,8 +659,10 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
   for (var i = 0; i < nestedComps.length; i++) {
       allItems.push(nestedComps[i]);
   }
-  for (var i = 0; i < collectedFootages.length; i++) {
-      allItems.push(collectedFootages[i]);
+  if (duplicateFootage) {
+      for (var i = 0; i < collectedFootages.length; i++) {
+          allItems.push(collectedFootages[i]);
+      }
   }
   function getOriginalFolderChain(item) {
       var chain = [];
@@ -764,6 +787,6 @@ function main_sugi(options) {
   if (hasFolder) {
     duplicateFolderStructureAndUpdateExpressions(options.duplicateFootage, options);
   } else {
-    collectCompAssets(mode, options, options.duplicateFootage);
+    collectCompAssets(mode, options, options.duplicateFootage, options.collectDependencies);
   }
 }
