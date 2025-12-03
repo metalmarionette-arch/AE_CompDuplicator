@@ -533,25 +533,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       alert("コンポを選択してください。");
       return;
   }
-  function selectionHasNestedRelationship(comps) {
-      var compSet = {};
-      for (var i = 0; i < comps.length; i++) {
-          compSet[comps[i].id] = true;
-      }
-      for (var i = 0; i < comps.length; i++) {
-          var comp = comps[i];
-          for (var j = 1; j <= comp.numLayers; j++) {
-              var layer = comp.layer(j);
-              if (layer.source && (layer.source instanceof CompItem)) {
-                  if (compSet[layer.source.id]) {
-                      return true;
-                  }
-              }
-          }
-      }
-      return false;
-  }
-  var allowNestedDuplication = selectedComps.length === 1 || selectionHasNestedRelationship(selectedComps);
+  var allowNestedDuplication = false;
   app.beginUndoGroup("コンポ資産収集");
   var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
   var baseFolder = null;
@@ -576,20 +558,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       for (var i = 1; i <= compItem.numLayers; i++) {
           var layer = compItem.layer(i);
           if (layer.source) {
-              if (layer.source instanceof CompItem) {
-                  var sourceComp = layer.source;
-                  var alreadySelected = false;
-                  for (var j = 0; j < selectedComps.length; j++) {
-                      if (selectedComps[j] === sourceComp) {
-                          alreadySelected = true;
-                          break;
-                      }
-                  }
-                  if (allowNestedDuplication && !alreadySelected && !isInArray(sourceComp, nestedComps)) {
-                      nestedComps.push(sourceComp);
-                      collectFromComp(sourceComp);
-                  }
-              } else if (duplicateFootage) {
+              if (!(layer.source instanceof CompItem) && duplicateFootage) {
                   if (!isInArray(layer.source, collectedFootages)) {
                       collectedFootages.push(layer.source);
                   }
@@ -623,12 +592,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                   for (var j = 1; j <= proj.numItems; j++) {
                       var item = proj.item(j);
                       if (item.name === depName) {
-                          if (item instanceof CompItem) {
-                              if (allowNestedDuplication && !isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
-                                  nestedComps.push(item);
-                                  collectFromComp(item);
-                              }
-                          } else if (duplicateFootage && item instanceof FootageItem) {
+                          if (duplicateFootage && item instanceof FootageItem) {
                               if (!isInArray(item, collectedFootages)) {
                                   collectedFootages.push(item);
                               }
