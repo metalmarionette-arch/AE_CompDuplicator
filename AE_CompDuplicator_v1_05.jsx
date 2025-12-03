@@ -533,6 +533,25 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
       alert("コンポを選択してください。");
       return;
   }
+  function selectionHasNestedRelationship(comps) {
+      var compSet = {};
+      for (var i = 0; i < comps.length; i++) {
+          compSet[comps[i].id] = true;
+      }
+      for (var i = 0; i < comps.length; i++) {
+          var comp = comps[i];
+          for (var j = 1; j <= comp.numLayers; j++) {
+              var layer = comp.layer(j);
+              if (layer.source && (layer.source instanceof CompItem)) {
+                  if (compSet[layer.source.id]) {
+                      return true;
+                  }
+              }
+          }
+      }
+      return false;
+  }
+  var allowNestedDuplication = selectedComps.length === 1 || selectionHasNestedRelationship(selectedComps);
   app.beginUndoGroup("コンポ資産収集");
   var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
   var baseFolder = null;
@@ -566,7 +585,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                           break;
                       }
                   }
-                  if (!alreadySelected && !isInArray(sourceComp, nestedComps)) {
+                  if (allowNestedDuplication && !alreadySelected && !isInArray(sourceComp, nestedComps)) {
                       nestedComps.push(sourceComp);
                       collectFromComp(sourceComp);
                   }
@@ -605,7 +624,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage) {
                       var item = proj.item(j);
                       if (item.name === depName) {
                           if (item instanceof CompItem) {
-                              if (!isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
+                              if (allowNestedDuplication && !isInArray(item, nestedComps) && !isInArray(item, selectedComps)) {
                                   nestedComps.push(item);
                                   collectFromComp(item);
                               }
