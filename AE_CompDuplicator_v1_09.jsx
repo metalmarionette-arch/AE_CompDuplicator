@@ -53,7 +53,7 @@ function buildUI(thisObj) {
   var moveCheckbox = optionGroup.add("checkbox", undefined, "移動（OFFのときは複製）");
   moveCheckbox.value = false;
 
-  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも複製/移動する（収集）");
+  var duplicateFootageCheckbox = optionGroup.add("checkbox", undefined, "フッテージも対象に");
   duplicateFootageCheckbox.value = false;
 
   var collectDependenciesCheckbox = optionGroup.add("checkbox", undefined, "依存関係にある全てを複製/移動する（収集）");
@@ -522,24 +522,28 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
       alert("プロジェクトが開かれていません。");
       return;
   }
+  var includeSelectedFootage = duplicateFootage && !collectDependencies;
   var selItems = proj.selection;
   if (selItems.length === 0) {
       alert("コンポを選択してください。");
       return;
   }
   var selectedComps = [];
+  var selectedFootages = [];
   for (var i = 0; i < selItems.length; i++) {
       if (selItems[i] instanceof CompItem) {
           selectedComps.push(selItems[i]);
+      } else if (includeSelectedFootage && selItems[i] instanceof FootageItem) {
+          selectedFootages.push(selItems[i]);
       }
   }
-  if (selectedComps.length === 0) {
+  if (selectedComps.length === 0 && selectedFootages.length === 0) {
       alert("コンポを選択してください。");
       return;
   }
   var allowNestedCollection = collectDependencies;
   app.beginUndoGroup("コンポ資産収集");
-  var createBaseFolder = !(mode === "duplicate" && !duplicateFootage);
+  var createBaseFolder = (mode === "move") || collectDependencies;
   var baseFolder = null;
   if (createBaseFolder) {
       var baseFolderName = "##Collected Comps - " + selectedComps[0].name;
@@ -575,7 +579,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
                       nestedComps.push(sourceComp);
                       collectFromComp(sourceComp);
                   }
-              } else if (!(layer.source instanceof CompItem) && (duplicateFootage || collectDependencies)) {
+              } else if (!(layer.source instanceof CompItem) && collectDependencies) {
                   if (!isInArray(layer.source, collectedFootages)) {
                       collectedFootages.push(layer.source);
                   }
@@ -615,7 +619,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
                                       nestedComps.push(item);
                                       collectFromComp(item);
                                   }
-                              } else if ((duplicateFootage || collectDependencies) && item instanceof FootageItem) {
+                              } else if (collectDependencies && item instanceof FootageItem) {
                                   if (!isInArray(item, collectedFootages)) {
                                       collectedFootages.push(item);
                                   }
@@ -659,9 +663,14 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
   for (var i = 0; i < nestedComps.length; i++) {
       allItems.push(nestedComps[i]);
   }
-  if (duplicateFootage || collectDependencies) {
-      for (var i = 0; i < collectedFootages.length; i++) {
+  for (var i = 0; i < collectedFootages.length; i++) {
+      if (!isInArray(collectedFootages[i], allItems)) {
           allItems.push(collectedFootages[i]);
+      }
+  }
+  for (var i = 0; i < selectedFootages.length; i++) {
+      if (!isInArray(selectedFootages[i], allItems)) {
+          allItems.push(selectedFootages[i]);
       }
   }
   function getOriginalFolderChain(item) {
@@ -721,7 +730,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
       }
       if (mode === "duplicate") {
           var dup;
-          if (item instanceof FootageItem && !duplicateFootage) {
+          if (item instanceof FootageItem && !(includeSelectedFootage || collectDependencies)) {
               dup = effectiveSource;
           } else {
               dup = duplicateItemWithRename(effectiveSource, renameOptions);
@@ -730,7 +739,7 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
           mapping.push({ original: item, duplicate: dup });
       } else {
           if (item instanceof FootageItem) {
-              if (duplicateFootage) {
+              if (includeSelectedFootage || collectDependencies) {
                   effectiveSource.parentFolder = targetFolder;
               }
               mapping.push({ original: item, duplicate: effectiveSource });
@@ -769,9 +778,10 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
       updateEssentialProperties(mapping);
   }
   app.endUndoGroup();
+  var totalFootages = collectedFootages.length + selectedFootages.length;
   alert("コンポ資産収集が完了しました。\n選択コンポ: " + selectedComps.length +
         " 個\nネストコンポ: " + nestedComps.length +
-        " 個\nフッテージ: " + collectedFootages.length + " 個");
+        " 個\nフッテージ: " + totalFootages + " 個");
 }
 
 function main_sugi(options) {
