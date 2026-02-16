@@ -95,10 +95,35 @@ function buildUI(thisObj) {
   myPanel.layout.resize();
   myPanel.onResizing = myPanel.onResize = function () { this.layout.resize(); }
 
+  myPanel.onClose = function () {
+    if ($.global.__AECompDuplicatorUI === myPanel) {
+      $.global.__AECompDuplicatorUI = null;
+    }
+    return true;
+  };
+
   return myPanel;
 }
 
-var myScriptPal = buildUI(this);
+function showSingletonUI(thisObj) {
+  var existingUI = $.global.__AECompDuplicatorUI;
+
+  if (existingUI && existingUI instanceof Window) {
+    try {
+      existingUI.show();
+      existingUI.active = true;
+      return existingUI;
+    } catch (e) {
+      $.global.__AECompDuplicatorUI = null;
+    }
+  }
+
+  var myScriptPal = buildUI(thisObj);
+  $.global.__AECompDuplicatorUI = myScriptPal;
+  return myScriptPal;
+}
+
+var myScriptPal = showSingletonUI(this);
 
 if ((myScriptPal != null) && (myScriptPal instanceof Window)) {
   myScriptPal.center();
@@ -482,37 +507,40 @@ function duplicateFolderStructureAndUpdateExpressions(dupFootage, renameOptions)
       }
   }
   app.beginUndoGroup("フォルダ構造複製・リネーム・参照更新");
-  var mapping = [];
-  for (var i = 0; i < selItems.length; i++){
-      duplicateFolderRecursive(selItems[i], selItems[i].parentFolder, dupFootage, renameOptions, mapping);
-  }
-  for (var i = 0; i < mapping.length; i++){
-      if (mapping[i].duplicate instanceof CompItem) {
-          var dupComp = mapping[i].duplicate;
-          for (var j = 1; j <= dupComp.numLayers; j++){
-              var layer = dupComp.layer(j);
-              if (layer.source) {
-                  for (var k = 0; k < mapping.length; k++){
-                      if (layer.source === mapping[k].original) {
-                          layer.replaceSource(mapping[k].duplicate, false);
-                          break;
+  try {
+      var mapping = [];
+      for (var i = 0; i < selItems.length; i++){
+          duplicateFolderRecursive(selItems[i], selItems[i].parentFolder, dupFootage, renameOptions, mapping);
+      }
+      for (var i = 0; i < mapping.length; i++){
+          if (mapping[i].duplicate instanceof CompItem) {
+              var dupComp = mapping[i].duplicate;
+              for (var j = 1; j <= dupComp.numLayers; j++){
+                  var layer = dupComp.layer(j);
+                  if (layer.source) {
+                      for (var k = 0; k < mapping.length; k++){
+                          if (layer.source === mapping[k].original) {
+                              layer.replaceSource(mapping[k].duplicate, false);
+                              break;
+                          }
                       }
                   }
               }
           }
       }
-  }
-  for (var i = 0; i < mapping.length; i++){
-      if (mapping[i].duplicate instanceof CompItem) {
-          var dupComp = mapping[i].duplicate;
-          for (var j = 1; j <= dupComp.numLayers; j++){
-              updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
+      for (var i = 0; i < mapping.length; i++){
+          if (mapping[i].duplicate instanceof CompItem) {
+              var dupComp = mapping[i].duplicate;
+              for (var j = 1; j <= dupComp.numLayers; j++){
+                  updateExpressionsInPropertyGroup(dupComp.layer(j), mapping);
+              }
+              replaceFootageInComp(dupComp, renameOptions);
           }
-          replaceFootageInComp(dupComp, renameOptions);
       }
+      updateEssentialProperties(mapping);
+  } finally {
+      app.endUndoGroup();
   }
-  updateEssentialProperties(mapping);
-  app.endUndoGroup();
   alert("フォルダ複製が完了しました。");
 }
 
@@ -543,6 +571,9 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
   }
   var allowNestedCollection = collectDependencies;
   app.beginUndoGroup("コンポ資産収集");
+  var nestedComps = [];
+  var collectedFootages = [];
+  try {
   var createBaseFolder = (mode === "move") || collectDependencies;
   var baseFolder = null;
   if (createBaseFolder) {
@@ -552,8 +583,6 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
       }
       baseFolder = proj.items.addFolder(baseFolderName);
   }
-  var nestedComps = [];
-  var collectedFootages = [];
   function isInArray(item, arr) {
       for (var i = 0; i < arr.length; i++) {
           if (arr[i] === item) {
@@ -777,7 +806,9 @@ function collectCompAssets(mode, renameOptions, duplicateFootage, collectDepende
       }
       updateEssentialProperties(mapping);
   }
-  app.endUndoGroup();
+  } finally {
+      app.endUndoGroup();
+  }
   var totalFootages = collectedFootages.length + selectedFootages.length;
   alert("コンポ資産収集が完了しました。\n選択コンポ: " + selectedComps.length +
         " 個\nネストコンポ: " + nestedComps.length +
